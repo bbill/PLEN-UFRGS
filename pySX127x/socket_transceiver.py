@@ -57,17 +57,32 @@ class Client(threading.Thread):
         self.sock.connect((host,port))
 
     def run(self):
-        sniff(prn=self.custom_action, iface=interfaceClient)
+        sniff(prn=self.send_rqst, iface=interfaceClient, count=1)
+        #data = bytearray(self.sock.recv(1024)).decode('ascii')
+        sniff(prn=self.recv_ans, iface=interfaceServer)
+        data = str(self.sock.recv(1024)).decode('ascii')
+        pkt = Ether(_pkt=data)
+        dst = pkt[IP].dst
+        print ('From LoRa: ' + data)
+        sendp(Ether()/IP(dst=dst,ttl=(1,4)), iface="wlan0")
 
-    def custom_action(self, packet):
-        # Verifica se o pacote tem os campos esperados antes de tentar acessá-los
-        if packet.haslayer(IP):
-            src = packet[IP].src
-            dst = packet[IP].dst
-            message = f"{packet}"
-            self.sock.send(bytearray(message, 'utf-8'))
-            data = bytearray(self.sock.recv(1024)).decode('ascii')
-            print ('From LoRa: ' + data)
+    def send_rqst(self, packet):
+        message = bytes(packet)
+        print(message)
+        #print('Pacote: ')
+        #print(' '.join(str(ord(char)) for char in str(packet)))
+        #chunks = [message[i:i+120] for i in range(0, len(message), 120)]
+        #for chunk in chunks:
+        #    self.sock.send(bytearray(chunk, 'utf-8'))
+        self.sock.send(message)
+            
+    def recv_ans(self, packet):
+        dst = packet[IP].dst
+        print(dst)
+        if not (dst = "143.50.54.38"):
+            message = bytes(packet)
+            self.sock.send(message)
+        
             
 class Server(asyncore.dispatcher):
     def __init__(self, host, port, interfaceServer):
@@ -90,12 +105,15 @@ class Handler(asyncore.dispatcher):
         
     def handle_read(self):
         if not self.tx_wait:
+            BOARD.led_on()
             data = self.recv(127)
             print('Send:' + str(data))
+            print(len(data))
             lora.write_payload(list(data))
             lora.set_dio_mapping([1,0,0,0,0,0]) # set DIO0 for txdone
             lora.set_mode(MODE.TX)
-            self.tx_wait = 1 
+            BOARD.led_off()
+            self.tx_wait = 1
     
     # when data for the socket, send
     def handle_write(self):
@@ -111,28 +129,31 @@ class Handler(asyncore.dispatcher):
 class LoRaSocket(LoRa):
     def __init__(self, verbose=False):
         super(LoRaSocket, self).__init__(verbose)
-        self.reset_ptr_rx()
+        #self.reset_ptr_rx()
         BOARD.led_off()
+        self.set_mode(MODE.SLEEP)
         self.set_pa_config(pa_select=1)
         self.set_max_payload_length(128) # set max payload to max fifo buffer length
         self.payload = []
-        self.set_mode(MODE.SLEEP)
         self.set_dio_mapping([0] * 6) #initialise DIO0 for rxdone  
 
     def on_rx_done(self):
         payload = self.read_payload(nocheck=True)
-        print(bytes(payload))
+        print(len(payload))
         
         if len(payload) == 127:
-            self.payload.extend(payload)
+            self.payload[len(self.payload):] = payload
+            #self.payload.extend(payload)
         else:
-            self.payload.extend(payload)
-            print('Recv:', bytes(self.payload))
+            self.payload[len(self.payload):] = payload
+            #self.payload.extend(payload)
+            print('Recv:', str(bytes(self.payload)))
             
-            server.conn.databuffer = bytes(self.payload)
+            server.conn.databuffer = bytes(payload)
             self.payload = []
-            
+          
         self.clear_irq_flags(RxDone=1)
+        self.set_mode(MODE.SLEEP)  
         self.reset_ptr_rx()
         BOARD.led_off()
         self.set_mode(MODE.RXCONT)
