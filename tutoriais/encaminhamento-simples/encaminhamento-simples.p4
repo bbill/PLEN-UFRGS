@@ -49,14 +49,14 @@ control ingress(inout headers hdr, inout metadata meta, inout standard_metadata_
 
     action _nop() {}
 
-    action forward_1() {
+    action forward_one() {
         forward(1);
     }
 
     table dmac {
         actions = {
             forward;
-            bcast;
+            forward_one;
             drop;
         }
 
@@ -76,7 +76,7 @@ control ingress(inout headers hdr, inout metadata meta, inout standard_metadata_
             0x047c16bfb9a1: forward(1);     // computador
         }
 
-        default_action = forward_1();
+        default_action = forward_one();
         size = 512;
     }
 
