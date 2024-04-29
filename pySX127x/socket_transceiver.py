@@ -35,6 +35,7 @@ from SX127x.board_config import BOARD
 
 BOARD.setup()
 
+# chance channels to reach a wider bandwidth
 class Change_Channel(asyncore.dispatcher):
     def __init__(self, interfaceClient):
         asyncore.dispatcher.__init__(self, interfaceClient)
@@ -48,6 +49,7 @@ class Change_Channel(asyncore.dispatcher):
             ch = ch % 14 + 1
             time.sleep(0.5)
 
+# sniffs wlan and sends packets through socket to server
 class Client(threading.Thread):
     def __init__(self, host, port, interfaceClient):
         threading.Thread.__init__(self)
@@ -56,6 +58,7 @@ class Client(threading.Thread):
         self.sock = socket.socket()
         self.sock.connect((host,port))
 
+    # sniffs and handles communication with client
     def run(self):
         sniff(prn=self.send_rqst, iface=interfaceClient, count=1)
         #data = bytearray(self.sock.recv(1024)).decode('ascii')
@@ -66,6 +69,7 @@ class Client(threading.Thread):
         print ('From LoRa: ' + data)
         sendp(Ether()/IP(dst=dst,ttl=(1,4)), iface="wlan0")
 
+    #sends packet through socket to server
     def send_rqst(self, packet):
         message = bytes(packet)
         print(message)
@@ -75,15 +79,16 @@ class Client(threading.Thread):
         #for chunk in chunks:
         #    self.sock.send(bytearray(chunk, 'utf-8'))
         self.sock.send(message)
-            
+    
+    # filters out the packets where the rasp is the destination and send
     def recv_ans(self, packet):
         dst = packet[IP].dst
         print(dst)
-        if not (dst = "143.50.54.38"):
+        if not dst == "143.50.54.38":
             message = bytes(packet)
             self.sock.send(message)
         
-            
+# responsible for the communication between the clients and lora             
 class Server(asyncore.dispatcher):
     def __init__(self, host, port, interfaceServer):
         asyncore.dispatcher.__init__(self)
@@ -96,7 +101,7 @@ class Server(asyncore.dispatcher):
         print("Connection from %s:%s" % sock.getpeername())
         self.conn = Handler(sock)
         
-
+# handles the server's communication
 class Handler(asyncore.dispatcher):
     def __init__(self, sock):
         asyncore.dispatcher.__init__(self, sock)
